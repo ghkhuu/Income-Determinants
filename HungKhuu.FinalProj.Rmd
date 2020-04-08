@@ -1,0 +1,335 @@
+---
+title: "FINAL PROJECT"
+author: "Hung Khuu"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+## I. Data preparation
+
+<strong>"How one's incarnation affects his/her earning ability?"<br>
+"Does how one feel at school have an impact on furure income?"<br>
+"Are you destined to make more money than other people if you are born on a particular month or year?"<br>
+"What impact does the degree earned brings to the income gap between men and women?"<br>
+"How marrital status affects one's income?"</strong><br>
+
+And finally,<br>
+
+<strong>"Does your SAT performance or the number of jobs you held increase your income potential?"</strong><br>
+
+These are the questions that immediately comes to my mind when I was examining the data descriptions. They acted as a guideline for me to pick my variable of interest, which are:
+<ul style="list-style-type:disc">
+  <li>Total number of incarceration `ttl.incarc`</li>
+  <li>Age at first incarceration `age.first.incarc`</li>
+  <li>Sentiment toward school `school.sentiment`</li>
+  <li>Birth month and year `brth.mth` & `brth.yr`</li>
+  <li>Whether the surveyee has a special physical/emotional condition `special.needs`</li>
+  <li>Highest degree earned `degree.earned`</li>
+  <li>Marrital status `marrital.stat`</li>
+  <li>SAT math and verbal scores `SAT.math` & `SAT.verbal`</li>
+  <li>Number of jobs worked as adult `adlthood.numjobs`</li>
+</ul><br>
+And the three main variables in the data set:
+<ul style="list-style-type:disc">
+  <li>Gender `GENDER`</li>
+  <li>Race `RACE`</li>
+  <li>Income `INCOME`, the dependent variable</li>
+</ul><br>
+
+```{r}
+library(plyr)
+library(knitr)
+library(ggplot2)
+library(reshape)
+library(Rmisc)
+options(scipen = 4)
+
+###Preparing data set
+
+nlsy <- read.csv("nlsy97_income.csv", header = TRUE, sep = ",") ##Read data into workspace
+
+colnames(nlsy) <- c("ttl.incarc", "age.first.incarc", "INCARC_LENGTH_LONGEST", "PUBID", "YSCH_36400", "school.sentiment", 
+                    "YSAQ_010", "YEXP_300", "YEXP_1500", "YEXP_1600", "YEXP_1800", "YEXP_2000", "GENDER", "brth.mth", 
+                    "brth.yr", "special.needs", "PC12_024", "PC12_028", "CV_ENROLLSTAT", "CV_HH_NET_WORTH_P", "CV_SAMPLE_TYPE", 
+                    "RACE", "YSCH_6800", "YSCH_7300", "YSAQ_372B", "YSAQ_371", "YSAQ_282J", "YSAQ_282Q", 
+                    "CV_HH_NET_WORTH_Y", "YSAQ_000B", "YSAQ_373", "YTEL_52_000001", "YTEL_52_000002", "YTEL_52_000003", 
+                    "YTEL_52_000004", "CV_COLLEGE_TYPE.01", "CV_INCOME_FAMILY", "CV_HH_SIZE", "CV_HH_UNDER_18", "CV_HH_UNDER_6", 
+                    "degree.earned", "marrital.stat", "YSCH_3112", "YINC_1400", "INCOME", "YINC_2400", "YINC_2600", 
+                    "YINC_2700", "YSAQ_000A000001", "YSAQ_000A000002", "YSAQ_000B", "YSAQ_360C", "YSAQ_364D", "YSAQ_371", 
+                    "YSAQ_372CC", "YSAQ_373", "YSAQ_374", "YHEA29_285", "YEMP_INDCODE_2002.01", "SAT.math", 
+                    "SAT.verbal", "CVC_ACT_SCORE_2007", "CVC_ASSETS_DEBTS_20", "CVC_TTL_JOB_TEEN", 
+                    "CVC_TTL_JOB_ADULT_ET", "adlthood.numjobs", "CVC_ASSETS_DEBTS_30")
+```
+
+There are `r count(nlsy$INCOME >= 0)[2,2]` non-missing `INCOME` observations. We will only work on cases that have income information, as it is the dependent variable that we are trying to describe with our model.
+
+```{r}
+nlsy.1 <- subset.data.frame(nlsy, INCOME >= 0,
+                            select = c("ttl.incarc", "age.first.incarc", "school.sentiment",
+                                             "GENDER", "brth.mth", "brth.yr", "special.needs",
+                                             "RACE", "degree.earned", "marrital.stat",
+                                             "INCOME", "SAT.math", "SAT.verbal", "adlthood.numjobs"))
+
+```
+
+<b>Dealing with missing value.</b>The data cleaning task continue with the missing values marked as -1, -2, -3, -4, and -5 in the data set. From the Bureau of Labor Statistics site, we know that missing values coded as -3, -4, -5 represent either the question is irrelevant in the surveyee case, or it was given to the wrong target, thus being removed by the surveyer (-3 invalid skip). The only potentialy meaningful missing value is -1, meaning the surveyees refused to answer a particular question, for one reason or another. That is the reason why I decided to recode all of the -1 missing values to `no answer`. All other values of missing value will be recoded as `NA`. As the unique values are shown below, only `school.sentiment` and `special.needs` have -1 missing values.
+
+```{r}
+unique(nlsy.1$age.first.incarc)
+unique(nlsy.1$ttl.incarc)
+unique(nlsy.1$school.sentiment)
+unique(nlsy.1$GENDER)
+unique(nlsy.1$brth.mth)
+unique(nlsy.1$brth.yr)
+unique(nlsy.1$RACE)
+unique(nlsy.1$degree.earned)
+unique(nlsy.1$special.needs)
+unique(nlsy.1$marrital.stat)
+unique(nlsy.1$SAT.math)
+unique(nlsy.1$SAT.verbal)
+unique(nlsy.1$adlthood.numjobs)
+
+nlsy.1[nlsy.1 < -1] <- NA
+
+nlsy.1 <- transform(nlsy.1, 
+                    school.sentiment = as.factor(mapvalues(school.sentiment, c(-1,1:4), c("no answer", "very.safe", "safe", "unsafe", "very.unsafe"))),
+                    GENDER = as.factor(mapvalues(GENDER, from = c("1","2"), to = c("Male", "Female"))),
+                    brth.mth = as.factor(mapvalues(brth.mth, 1:12, c("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"))),
+                    special.needs = as.factor(mapvalues(special.needs, from = c(-1,1,0), to = c("no answer","yes", "no"))),
+                    RACE = as.factor(mapvalues(RACE, 1:4, c("BLACK", "HISPANIC", "MIXED", "OTHERS"))),
+                    degree.earned = as.factor(mapvalues(degree.earned, 0:7, c("NONE", "GED", "HS.DIPLOMA", "ASSOCIATE", "BACHELOR", "MASTER", "PHD", "PROF"))),
+                    marrital.stat = as.factor(mapvalues(marrital.stat, 0:4, c("never.married", "married", "separeated", "divorced", "widowed"))),
+                    SAT.math = as.factor(mapvalues(SAT.math, 0:6, c("waiting score", "200-300", "301-400", "401-500", "501-600", "601-700", "701-800"))),
+                    SAT.verbal = as.factor(mapvalues(SAT.verbal, 0:6, c("waiting score", "200-300", "301-400", "401-500", "501-600", "601-700", "701-800")))
+                    )
+```
+
+<b>Dealing with topcoded `INCOME`.</b> From the description, we know that the top earners in the data was topcoded by the mean of their income, with the value of `r paste("$", max(nlsy.1$INCOME))`. Below is the plot of `INCOME` by `GENDER` for the untreated data:
+
+```{r}
+qplot(x = GENDER, y = INCOME,
+      geom = "boxplot", data = nlsy.1,
+      xlab = "Gender", 
+      ylab = "Income",
+      fill = I("lightblue"))
+```
+
+The topcoding caused the data set to have many big outliers. After looking into different methods to solve the problem, including trying to recode the value with random normal distributed value around the mean, I decided to recoded all topcoded values to 100000. Doing that enable me to 1) keep `r sum(nlsy.1$INCOME == max(nlsy.1$INCOME))` observations with topcoded values and improve the stability of the model, and 2) reduce the impact of outliers on the model. Let's have a look at the income data after the treatment:
+
+```{r}
+nlsy.1$INCOME[nlsy.1$INCOME == max(nlsy.1$INCOME)] <- 100000 
+qplot(x = GENDER, y = INCOME,
+      geom = "boxplot", data = nlsy.1,
+      xlab = "Gender", 
+      ylab = "Income",
+      fill = I("lightblue"))
+```
+
+After the processes above, the data set of interest is now ready to be examined further
+<hr>
+
+## II. Data exploration
+
+First, we will have a general look at the structure as well as a summary of our data
+
+```{r}
+str(nlsy.1)
+kable(summary(nlsy.1), format = "markdown")
+```
+
+Diving a little deeper, we will examine the relationships between variables through the spectrum of `GENDER`, `RACE`, and `INCOME`. The table below shows <b>the average age of first incarceration among different groups of total number of incarceration.</b>
+
+
+
+```{r}
+kable(tapply(nlsy.1$age.first.incarc, INDEX = nlsy.1[c("ttl.incarc", "GENDER")], FUN = mean, na.rm = TRUE), format = "markdown", digits = 3)
+```
+It is interesting to see that in the groups of 2 and 6 incarcerations, the average age of first incarceration of female is lower than that of male. One explanation for this can be the violation that led to the incarceration is minor, and the term of incarceration is shorter for women than men.
+
+Next, we look at the relationship between the highest degree earned and income across gender.
+```{r}
+kable(tapply(nlsy.1$INCOME, INDEX = nlsy.1[c("degree.earned", "GENDER")], FUN = mean, na.rm = TRUE), format = "markdown")
+
+income.by.degree.earned <- summarySE(nlsy.1, measurevar="INCOME", groupvars=c("GENDER","degree.earned"), na.rm = TRUE)
+
+income.by.degree.earned$degree.earned <- factor(income.by.degree.earned$degree.earned, levels = c(NULL, 'NONE', 'GED', 'HS.DIPLOMA', 'ASSOCIATE', 'BACHELOR', 'MASTER', 'PHD', 'PROF'))
+
+ggplot(income.by.degree.earned, aes(x = degree.earned, y = INCOME, fill = GENDER)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  xlab("Highest degree earned") +
+  ylab("Average Income") +
+  geom_errorbar(aes(ymin = INCOME - se, ymax = INCOME + se),
+                width=.2,                    
+                position=position_dodge(.9))+
+  ggtitle("Average income by highest degree earned across gender") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+ggplot(income.by.degree.earned, aes(x = degree.earned, y = INCOME, group = GENDER)) +
+  xlab("Highest degree earned") +
+  ylab("Average Income") +
+  geom_line(aes(color=GENDER)) +
+  geom_point(aes(color=GENDER)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+Looking at the table, we can easily observe that apart from Phd, regardless of the highest degree you have, men always make more money than women, even though the gap shrinks by the small amount when moving to higher degree.
+
+The result in the bar chart is consistent with the law of return: the more effort you put in your education, the higher your income potential will be. With that being said, there's a larger variance in income for PhD and Professional degree holder. It is also interesting to see that the missing values seems to make more money annually compare to those without any degrees.
+
+Below we will continue to look at how marrital status interact with other variables
+
+```{r}
+kable(apply(table(nlsy.1$marrital.stat, nlsy.1$RACE), 2, FUN = function(x) {round(100 * (x / sum(x)), 2)}), format = "markdown")
+```
+
+The table above shows the percentage of each marrital status by race groups. People belongs to race groups other than black, hispanic or mixed has the highest percentage of married status, but they also has the second highest number of divorced percentage. The group with the highest divorced percentage, and also seperated percentage, is non-hispanic mixed. The following graph will reveal how marrital status can affect income potential
+
+```{r}
+marrital.stat.plot <- ggplot(data=nlsy.1, aes(x=marrital.stat, y=INCOME, fill = marrital.stat))
+marrital.stat.plot + 
+  geom_boxplot() + 
+  facet_wrap(~ GENDER) + 
+  xlab("Marrital status") + 
+  ylab("Income") + 
+  ggtitle("Income by marrital status across Genders") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+It turned out being married can improve your income potential, while a divorce can make you earn less annually. Another noticeable trend is that men of all marrital status earn more than women, another evidence of the income inequality among the gender line. Interestingly, men who are never married earn approximately the same as their female counterpart.
+
+Lastly, we look at how <b>SAT scores</b> correlate with income
+
+```{r}
+SATmath.plot <- ggplot(data=nlsy.1, aes(x=SAT.math, y=INCOME, colour = GENDER))
+SATmath.plot + 
+  geom_jitter() + 
+  facet_wrap(~GENDER) +
+  labs(x = "SAT Math score", y = "Income") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+SATverbal.plot <- ggplot(data=nlsy.1, aes(x=SAT.verbal, y=INCOME, colour = GENDER))
+SATmath.plot + 
+  geom_jitter() + 
+  facet_wrap(~GENDER) +
+  labs(x = "SAT Verbal score", y = "Income") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+There is no clear trend in both graphs to support that the higher SAT scores might give a hint on how much one will be able to earn later on in life. However, people in the lowest group of SAT score is much more unlikely to be able to have an income above $60000.
+
+<hr>
+
+## III. Building the model
+
+Before setting out to find a model that can best describe the data set, we need to check the normality of the dependent variable
+
+```{r}
+with(nlsy.1, qqnorm(INCOME))
+with(nlsy.1, qqline(INCOME, col = "blue"))
+```
+
+Our `INCOME` data seems to have a right skew. This can be explain by the relative large number of topcoded values, even though treatment has been applied to reduce this effect.
+
+Next, a general linear regression model will be run, from which each variable will be taken out to answer the questions stated at the beginning
+
+#### General Model
+
+```{r}
+nlsy.lm <- lm(data = nlsy.1, INCOME ~ .)
+summary(nlsy.lm)
+```
+
+This general model resulted in most of values being `NA`'s. Therefore, our next step will try to troubleshoot the model to see what is causing the problem
+
+#### Model 1: No SAT score
+
+```{r}
+nlsy.lm1 <- update(nlsy.lm, . ~ .-SAT.math - SAT.verbal)
+summary(nlsy.lm1)
+```
+
+As soon as the SAT scores were removed, the model works again. This might be because of the large number of `NA` within these variable. `SAT.math` has `r sum(is.na(nlsy.1$SAT.math))` missing values, whereas the berbal score has `r sum(is.na(nlsy.1$SAT.math))` missing data points.
+
+Additionally, the summary report showed that birth month and year does NOT have any significance in determining one's `INCOME`. This helped debunked the myth about a certain birth month will make a person more properous than another, which has been popular in Asian countries.
+
+#### Model 2: No SAT score & Birth date
+
+```{r}
+nlsy.lm2 <- update(nlsy.lm, . ~ . -SAT.math - SAT.verbal - brth.mth - brth.yr)
+summary(nlsy.lm2)
+```
+
+This second model has a smaller adjusted RSquare value of `r summary(nlsy.lm2)$adj.r.squared`, compared to the value of `r summary(nlsy.lm1)$adj.r.squared` for the first model. Let us test to see whether the removal of birth date makes a significance difference
+
+```{r}
+anova(nlsy.lm1, nlsy.lm2, test = "Chisq")
+names(anova(nlsy.lm1, nlsy.lm2, test = "Chisq"))
+```
+
+The p-value of `r anova(nlsy.lm1, nlsy.lm2, test = "Chisq")$"Pr(>Chi)"` implying some significant different between the 2 model. This can be explained by the fact that the older one gets, the more money one earn, and removing birth year is the cause of the problem. To prove the point, we will add `brth.yr` back in the model
+
+```{r}
+anova(nlsy.lm2, update(nlsy.lm, . ~ . -SAT.math - SAT.verbal - brth.mth), test = "Chisq")
+```
+
+Immediately, we see that there is no longer any significant difference between the model with and without `brth.mth`. So we will amend the second model to exclude only `brth.mth`, apart from the exclusions in model 1
+
+```{r}
+nlsy.lm2 <- update(nlsy.lm, . ~ . -SAT.math - SAT.verbal - brth.mth)
+```
+
+#### Model 3: Marrital status impact
+
+In this step, we will investigate the impact of `marrital.stat` on `INCOME`. Let's run the new model and compare with our previous ones.
+
+```{r}
+nlsy.lm3 <- update(nlsy.lm, . ~ . -SAT.math - SAT.verbal - brth.mth - marrital.stat)
+summary(nlsy.lm3)
+```
+
+Removing `marrital.stat` resulted in lower adjusted RSquare value. Moreover, it made comparison between models impossible, as it adding more data points to the model (due to less number of `NA`). Thus, on the basis of adjusted RSquare, marrital status should be included back into the model. Instead, we will remove `ttl.incarc` and `school.sentiment` to examine the effect.
+
+```{r}
+nlsy.lm3 <- update(nlsy.lm, . ~ . -SAT.math - SAT.verbal - brth.mth - ttl.incarc - school.sentiment)
+summary(nlsy.lm3)
+```
+
+Comparison between this new model and the previous ones was also impossible due to data size difference. Nevertheless, there is a slight improvement in adjusted RSquare. This model also showed that, despite earlier analysis of the bar chart, the highest degree earned does not seems to have significant impact on `INCOME`. The next model will try to look deeper into this matter.
+
+#### Model 4: Highest degree earned impact
+
+```{r}
+nlsy.lm4 <- update(nlsy.lm, . ~ . -SAT.math - SAT.verbal - brth.mth - ttl.incarc - school.sentiment - degree.earned)
+summary(nlsy.lm4)
+```
+
+The adjusted RSquare for this model falls to `r summary(nlsy.lm4)$adj.r.squared`, a significant drop from earlier value of `r summary(nlsy.lm3)$adj.r.squared` of the third model. Thus, it can be concluded that dropping `degree.earned` will make the model perform worse.
+
+<strong>Model selection.</strong> Through running and comparing different models, I concluded that the third model, the one containing `age.first.incarc`, `GENDER`, `brth.yr`, `special.needs`, `RACE`, `degree.earned`, `marrital.stat`, and `adlthood.numjobs`, best accounts for one's income potential. below is the performance plots of that model
+
+```{r}
+plot(nlsy.lm3)
+```
+
+The Residuals vs. Fitted plot does not have any clear pattern, even though the line has a small dip at midrange of the fitted values. Normal QQ plot shows that the residuals have a normal distribution for most of the range of data. However, the Residuals vs. Leverage plot has a slightly funnel shape.
+
+## IV. Conclusion
+
+Go back to the questions when we start out, there are some that has been answered along the way when the model analysis was performed. It can be confirmed that birth month has no impact on how much one is entitle to earned later in life. Whether one has been incarcerated or not also have no predictive power in predicting that person's future income, and the same applies to whether one feels safe at school or not. On the contrary, if one have a special condition in needs of assistance, the person will likely earn `r round(summary(nlsy.lm3)$coef["special.needsyes","Estimate"], 2)` than those who don't have any condition.
+
+It is also confirmed by the model that the higher the degree you earn, the higher you can get paid. The evidence for this is that earning a bachelor degree can add `r round(summary(nlsy.lm3)$coef["degree.earnedBACHELOR","Estimate"], 2)` with p-value of `r round(summary(nlsy.lm3)$coef["degree.earnedBACHELOR","Pr(>|t|)"], 2)` to the income compare to the professional degree, while holding the GED will make one's income worse off by `r round(summary(nlsy.lm3)$coef["degree.earnedGED","Estimate"], 2)`. Marrital status can also makes an impact on your earning, albeit may not be clear and vary from case to case. Married people seems to earn more compare to never married or seperated groups.
+
+Most importantly, and sadly, your gender have a very high chance of determining you will earn more or less base on the data set. Keeping everything else constant, men earn on average `r round(summary(nlsy.lm3)$coef["GENDERMale","Estimate"], 2)` than women at 95% confidence.
+
+
+
+
+
+
+
+
